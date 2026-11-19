@@ -19,8 +19,7 @@ use the editor.
   Ask Lovable to change the schema.
 - **Generated files.** Do not edit a file whose header says it is automatically
   generated.
-- **AI gateway.** Keep model calls on Lovable's gateway, and keep
-  `LOVABLE_API_KEY` out of browser code.
+- **AI.** All model calls go to the user's own Ollama server (Gemma), never Lovable's AI gateway — the user requires independence from Lovable AI.
 - **Connectors.** Lovable provides native connectors. `list_connectors` shows
   which are enabled; `add_connector` only returns the dashboard link. When a
   connector is enabled, calls go through the connector gateway and need
@@ -28,3 +27,7 @@ use the editor.
   own key and store it in Secrets.
 - **Secrets.** Lovable manages them. Do not put secret values in the repo.
 <!-- LOVABLE:END -->
+
+- PDF extraction and OCR run in the browser through dynamically imported libraries; keep ingestion server functions independent of canvas and browser workers because the server runtime cannot execute them.
+
+- Document retrieval uses Supabase PostgreSQL full-text search, because the user's Ollama server does not serve embeddings.
