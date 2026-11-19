@@ -110,10 +110,10 @@ function Index() {
 
   const saveEdit = async (i: number) => {
     const m = msgs[i];
-    if (!m.question || !draft.trim()) return;
+    if (!m?.question || !draft.trim()) return;
     setSaving(true); setSaveError(null);
     try {
-      await saveCorrection({ data: { question: m.question, bonne_reponse: draft } });
+      await saveCorrection({ data: { question: m.question!, bonne_reponse: draft } });
       setMsgs(msgs.map((x, j) => (j === i ? { ...x, content: draft, corrected: true } : x)));
       setEditing(null);
     } catch (e: any) { setSaveError(e.message ?? String(e)); }
