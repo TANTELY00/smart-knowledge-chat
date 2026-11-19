@@ -90,8 +90,14 @@ function formatChat(matches: ChatMatch[]) {
 export const saveCorrection = createServerFn({ method: "POST" })
   .inputValidator(z.object({ question: z.string().trim().min(1).max(4000), bonne_reponse: z.string().trim().min(1).max(8000) }))
   .handler(async ({ data }) => {
-    const id = await rpc<string>("insert_chat", { p_question: data.question, p_reponse: data.bonne_reponse });
-    return { id };
+    try {
+      const id = await rpc<string>("insert_chat", { p_question: data.question, p_reponse: data.bonne_reponse });
+      return { id };
+    } catch (e: any) {
+      if (String(e?.message ?? "").includes("non configurée"))
+        throw new Error("Table chat absente : exécutez le script supabase/chat.sql dans Supabase > SQL Editor, puis réessayez.");
+      throw e;
+    }
   });
 
 const SYSTEM = `Tu es un assistant de recherche (agent RAG). Pour toute question sur les documents, appelle l'outil retrieve_context avec des mots-clés précis, éventuellement plusieurs fois avec des mots-clés reformulés ou des synonymes.
