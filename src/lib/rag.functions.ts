@@ -1,5 +1,11 @@
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
+import {
+  formatScenarioAnswer,
+  isInvalidScenarioAnswer,
+  isProcedureAnswer,
+  isScenarioRequest,
+} from "@/lib/scenario";
 
 const SUPABASE_URL = "https://czdmzinjcthltkmpikeb.supabase.co";
 const SUPABASE_KEY = "sb_publishable_2mMcgSPrJlYJTr-YOFGbqg_jTz12zok";
@@ -108,7 +114,46 @@ Fais des réponses claires, concises et directement exploitables. Commence par r
 
 Utilise du Markdown standard (titres avec #, listes avec 1. ou -, gras avec **). N'utilise jamais de syntaxe LaTeX ou de délimiteurs mathématiques; pour un chemin de menus, écris par exemple « Vente > Fidélisation client > Remboursement » ou « Vente, puis Fidélisation client ». Évite de répéter la même citation à chaque phrase d'une étape.
 
-Base de connaissance validée : certains passages sont marqués [Réponse validée]. Ce sont des réponses corrigées par un humain. Si une réponse validée correspond à la question, elle est PRIORITAIRE sur les documents et doit être utilisée telle quelle (en la reformulant au besoin) ; cite-la comme [Réponse validée]. En cas de contradiction avec un document, suis la réponse validée.`;
+Base de connaissance validée : certains passages sont marqués [Réponse validée]. Ce sont des réponses corrigées par un humain. Si une réponse validée correspond à la question, ses informations sont PRIORITAIRES sur les documents et doivent être utilisées sans les contredire ; cite-la comme [Réponse validée]. En cas de contradiction avec un document, suis la réponse validée. Tu peux restructurer une procédure validée au format demandé sans en changer les informations.`;
+
+const SCENARIO_INSTRUCTIONS = `
+Pour une demande de scénario de test, de cas de test ou de test automatisé, réponds uniquement avec un objet JSON valide, sans Markdown ni texte avant/après. Le format est :
+{"titre":"...","prerequis":[],"etapes":[{"action":"...","cible":"...","valeur":"...","condition":"..."}]}
+Applique également ce format quand la réponse est une procédure d'utilisation de CashOffice avec des actions à effectuer dans l'interface, même si la question ne mentionne pas un scénario ou un test. Mappe les verbes toucher, cliquer et sélectionner aux actions correspondantes ; pour attendre l'affichage d'un écran ou d'un contrôle, utilise wait avec la condition visible. La cible doit être l'identifiant UIA connu ou, s'il n'est pas fourni, le libellé visible exact. N'invente pas d'identifiants techniques.
+Les propriétés inutilisées d'une étape doivent être omises. Actions autorisées : launch, attach, click, set, select, key, wait, assert, screenshot, export_uia_tree, close. Conditions autorisées : existe, n_existe_pas, visible, active, texte_egale, contient, commence_par, expression_reguliere, valeur_numeric_egale, coche, decoche, ligne_selectionnee, message_erreur_visible. wait et assert nécessitent une condition ; set, select et key nécessitent une valeur. N'utilise select que pour choisir une option précise et renseigne alors valeur ; pour sélectionner une fiche ou un élément visible, utilise click si aucune valeur à sélectionner n'est indiquée. N'ajoute pas de condition à click ou key. Ne transforme pas une description comme « effectuer la consultation » en faux nom de bouton ; omets-la si les actions précédentes couvrent déjà la tâche. Pour fermer, choisis une seule option explicitement mentionnée (bouton connu ou touche). N'invente pas de cibles ni d'informations absentes des documents ou de la demande. N'inclus pas launch ni attach : l'application CashOffice.exe sera ajoutée automatiquement. Pour une demande hors périmètre, réponds uniquement {"statut":"hors_perimetre","message":"..."}.
+Pour les autres questions, conserve le format de réponse habituel.`;
+
+async function convertScenarioAnswer(
+  source: string,
+  previousAttempt: string,
+  errors: string[],
+): Promise<string> {
+  const correction = errors.length
+    ? `\n\nErreurs à corriger :\n${errors.map((error) => `- ${error}`).join("\n")}\n\nProposition invalide :\n${previousAttempt}`
+    : "";
+  const response = await fetch(`${OLLAMA_URL}/api/chat`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      model: OLLAMA_MODEL,
+      messages: [
+        {
+          role: "system",
+          content: `${SCENARIO_INSTRUCTIONS}\n\nTransforme le texte source en scénario JSON sans inventer d'informations. Préserve les actions explicites et corrige toute erreur de validation.`,
+        },
+        { role: "user", content: `${source}${correction}` },
+      ],
+      stream: false,
+    }),
+  });
+  if (!response.ok) {
+    throw new Error(
+      `Erreur de conversion du scénario par Gemma ${response.status}: ${(await response.text()).slice(0, 300)}`,
+    );
+  }
+  const result = (await response.json()) as { message?: { content?: string } };
+  return result.message?.content ?? "";
+}
 
 const TOOLS = [
   {
@@ -137,18 +182,37 @@ async function ollamaAgent(messages: { role: "user" | "assistant"; content: stri
   const sources = new Map<string, number>();
   // Vérifie d'abord la table chat (réponses validées) pour la dernière question.
   const lastQuestion = [...messages].reverse().find((m) => m.role === "user")?.content ?? "";
+  const scenarioRequested = isScenarioRequest(lastQuestion);
   const validated = lastQuestion ? await retrieveChat(lastQuestion) : [];
   for (const v of validated) sources.set("Réponse validée", Math.max(sources.get("Réponse validée") ?? 0, v.similarity));
   const system = validated.length
-    ? `${SYSTEM}\n\nRéponses validées trouvées pour la question actuelle :\n\n${formatChat(validated)}`
-    : SYSTEM;
+    ? `${SYSTEM}\n\nRéponses validées trouvées pour la question actuelle :\n\n${formatChat(validated)}\n\n${SCENARIO_INSTRUCTIONS}`
+    : `${SYSTEM}\n\n${SCENARIO_INSTRUCTIONS}`;
   const msgs: any[] = [{ role: "system", content: system }, ...messages];
   const steps: string[] = [];
-  const done = (answer: string) => ({
-    answer,
-    steps,
-    sources: [...sources.entries()].map(([s, sim]) => ({ source: s, similarity: sim })),
-  });
+  const done = async (answer: string) => {
+    const requiresScenarioFormat = scenarioRequested || isProcedureAnswer(answer);
+    let candidate = answer;
+    let formattedAnswer = formatScenarioAnswer(candidate, requiresScenarioFormat);
+    let attempts = 0;
+
+    while (requiresScenarioFormat && isInvalidScenarioAnswer(formattedAnswer) && attempts < 2) {
+      const invalid = JSON.parse(formattedAnswer) as { erreurs?: string[] };
+      candidate = await convertScenarioAnswer(
+        answer,
+        candidate,
+        Array.isArray(invalid.erreurs) ? invalid.erreurs : [],
+      );
+      formattedAnswer = formatScenarioAnswer(candidate, true);
+      attempts++;
+    }
+
+    return {
+      answer: formattedAnswer,
+      steps,
+      sources: [...sources.entries()].map(([s, sim]) => ({ source: s, similarity: sim })),
+    };
+  };
   for (let turn = 0; turn < 5; turn++) {
     let res: Response;
     try {

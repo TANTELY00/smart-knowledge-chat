@@ -31,6 +31,14 @@ Sous chaque réponse : les requêtes de recherche utilisées (🔎) et les sourc
 Les réponses sont générées par **Ollama · gemma4:e4b** (serveur http://159.195.68.117:11434).
 La recherche ne dépend d’aucun service d’IA ; seules les réponses utilisent Gemma.
 
+### Réponses au format scénario JSON
+
+Pour une demande de scénario ou de cas de test, l’agent renvoie un objet JSON avec `id`, `titre`,
+`prerequis` et `etapes`. Les réponses sont validées côté serveur : les actions, cibles, valeurs et
+conditions requises sont vérifiées, les variables `${NOM}` deviennent `{{NOM}}`, puis l’étape
+`launch` avec `CashOffice.exe` est ajoutée automatiquement. Les demandes hors périmètre restent
+au format JSON avec `statut` et `message`. Les réponses aux autres questions gardent leur format habituel.
+
 ## 4. Architecture
 | Élément | Fichier |
 |---|---|

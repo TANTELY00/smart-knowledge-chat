@@ -219,6 +219,17 @@ function renderBlocks(content: string[]): ReactNode[] {
 }
 
 export function MarkdownResponse({ content }: { content: string }) {
+  try {
+    const json = JSON.parse(content);
+    return (
+      <pre className="overflow-x-auto rounded-md border border-border bg-muted p-4 text-xs leading-relaxed">
+        <code>{JSON.stringify(json, null, 2)}</code>
+      </pre>
+    );
+  } catch {
+    // Non-JSON answers continue through the Markdown renderer.
+  }
+
   return (
     <div className="space-y-3 break-words text-sm leading-7">
       {renderBlocks(content.replace(/\r/g, "").split("\n"))}

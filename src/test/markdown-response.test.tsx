@@ -33,4 +33,10 @@ describe("MarkdownResponse", () => {
     expect(container.querySelector("img")).not.toBeInTheDocument();
     expect(container.textContent).toBe("<img src=x onerror=alert(1)>");
   });
+
+  it("renders JSON responses as formatted code", () => {
+    const { container } = render(<MarkdownResponse content='{"titre":"Test","etapes":[]}' />);
+
+    expect(container.querySelector("pre code")?.textContent).toContain('"titre": "Test"');
+  });
 });
