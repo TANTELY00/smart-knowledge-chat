@@ -86,9 +86,49 @@ function hash3(value: string): string {
 function extractJson(raw: string): unknown {
   const fenced = raw.match(/```(?:json)?\s*([\s\S]*?)```/i);
   const candidate = (fenced?.[1] ?? raw).trim();
-  const start = candidate.indexOf("{");
-  const end = candidate.lastIndexOf("}");
-  return JSON.parse(start >= 0 && end > start ? candidate.slice(start, end + 1) : candidate);
+  let lastError: unknown;
+
+  for (let start = 0; start < candidate.length; start++) {
+    const opening = candidate[start];
+    if (opening !== "{" && opening !== "[") continue;
+
+    const expectedClosers: string[] = [];
+    let inString = false;
+    let escaped = false;
+
+    for (let index = start; index < candidate.length; index++) {
+      const character = candidate[index];
+      if (character === undefined) break;
+
+      if (inString) {
+        if (escaped) escaped = false;
+        else if (character === "\\") escaped = true;
+        else if (character === '"') inString = false;
+        continue;
+      }
+
+      if (character === '"') {
+        inString = true;
+      } else if (character === "{") {
+        expectedClosers.push("}");
+      } else if (character === "[") {
+        expectedClosers.push("]");
+      } else if (character === "}" || character === "]") {
+        if (expectedClosers.pop() !== character) break;
+        if (expectedClosers.length === 0) {
+          try {
+            return JSON.parse(candidate.slice(start, index + 1));
+          } catch (error) {
+            lastError = error;
+            break;
+          }
+        }
+      }
+    }
+  }
+
+  if (lastError instanceof Error) throw lastError;
+  return JSON.parse(candidate);
 }
 
 function isScenarioShape(value: unknown): boolean {

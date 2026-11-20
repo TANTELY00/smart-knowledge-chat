@@ -22,10 +22,12 @@ Les documents indexés avant l’ajout de l’OCR doivent être réindexés pour
 
 ## 3. Poser des questions (agent)
 Tapez une question à droite. L'agent :
-1. décide de chercher → appelle `retrieve_context(query)` ;
+
+1. décide de chercher → appelle `retrieve_context(query)` (jusqu'à 3 recherches ciblées) ;
 2. `match_rag_documents` renvoie les 4 passages les plus pertinents (recherche plein texte) ;
-3. il peut relancer une recherche (max 5 étapes) puis répond en citant `[source]`.
+3. il peut reformuler une recherche sur le même sujet, puis répond directement en citant `[source]`.
 Sous chaque réponse : les requêtes de recherche utilisées (🔎) et les sources avec leur score.
+Toutes les questions sont interprétées comme portant sur CashOffice par défaut : il n'est pas nécessaire de répéter le nom du logiciel. Le contexte CashOffice est aussi ajouté aux recherches documentaires et aux réponses validées.
 
 ### Choix du modèle
 Les réponses sont générées par **Ollama · gemma4:e4b** (serveur http://159.195.68.117:11434).

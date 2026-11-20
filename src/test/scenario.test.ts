@@ -64,6 +64,16 @@ describe("scenario response formatting", () => {
     expect(JSON.stringify(result, null, 2)).toContain('\n        "action": "select"');
   });
 
+  it("keeps a top-level array as formatted JSON in brut rather than an escaped string", () => {
+    const raw =
+      '[{"titre":"Création taille","prerequis":[],"etapes":[]} , {"titre":"Création article","prerequis":[],"etapes":[]}]';
+    const result = JSON.parse(formatScenarioAnswer(raw, true));
+
+    expect(result["brut"]).toEqual(JSON.parse(raw));
+    expect(Array.isArray(result["brut"])).toBe(true);
+    expect(JSON.stringify(result, null, 2)).toContain('\n      "titre": "Création taille"');
+  });
+
   it("leaves ordinary answers unchanged and formats out-of-scope responses", () => {
     expect(formatScenarioAnswer("Voici la réponse.", false)).toBe("Voici la réponse.");
     expect(formatScenarioAnswer('{"statut":"hors_perimetre","message":"Autre sujet"}', false)).toBe(
